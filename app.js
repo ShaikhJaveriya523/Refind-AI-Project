@@ -1,0 +1,1233 @@
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    // ==========================================
+    // 1. BASIC SETTINGS
+    // ==========================================
+
+    const API_URL = "http://localhost:5000/api";
+
+    const currentUser = localStorage.getItem("loggedInUser");
+
+    const ALERT_KEY = "refindAlerts";
+
+    let reports = [];
+    let alerts = [];
+
+    function loadData() {
+        try {
+            alerts = JSON.parse(
+                localStorage.getItem(ALERT_KEY) || "[]"
+            );
+
+            if (!Array.isArray(alerts)) alerts = [];
+
+        } catch (error) {
+            alerts = [];
+        }
+    }
+
+    function saveData() {
+        // Reports are saved in SQLite.
+        // Only temporary alerts are stored locally for now.
+        localStorage.setItem(ALERT_KEY, JSON.stringify(alerts));
+    }
+
+    loadData();
+
+
+    // ==========================================
+    // 2. SAFE HTML DISPLAY
+    // ==========================================
+
+    function escapeHTML(value) {
+        return String(value ?? "").replace(/[&<>"']/g, function (char) {
+            return {
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;"
+            }[char];
+        });
+    }
+
+
+    // ==========================================
+    // 3. FETCH SHARED REPORTS FROM DATABASE
+    // ==========================================
+
+    async function fetchReportsFromServer() {
+
+        try {
+
+            const response = await fetch(`${API_URL}/reports`);
+
+            if (!response.ok) {
+                throw new Error("Unable to fetch reports.");
+            }
+
+            const data = await response.json();
+
+            if (!data.success || !Array.isArray(data.reports)) {
+                throw new Error("Invalid reports response.");
+            }
+
+            reports = data.reports.map(function (report) {
+
+                return {
+                    ...report,
+
+                    id: String(report.id),
+
+                    lostDate:
+                        report.type === "lost" ? report.eventDate : "",
+
+                    foundDate:
+                        report.type === "found" ? report.eventDate : "",
+
+                    brand: report.brand || "",
+                    category: report.category || "",
+                    color: report.color || "",
+                    itemName: report.itemName || "",
+                    fromCity: report.fromCity || "",
+                    toCity: report.toCity || "",
+                    location: report.location || "",
+                    busNumber: report.busNumber || "",
+                    description: report.description || "",
+                    photo: report.photo || "",
+                    email: report.email || "",
+                    status: report.status || "active"
+
+                };
+
+            });
+
+            console.log("Shared reports loaded:", reports.length);
+
+            updateDashboard();
+            displayMyReports();
+            displayMatches();
+
+        } catch (error) {
+
+            console.error("Reports loading error:", error);
+
+            console.error(
+                "Check whether Node.js backend is running on port 5000."
+            );
+
+        }
+    }
+
+
+    // ==========================================
+    // 4. NAVIGATION
+    // ==========================================
+
+    const navButtons = document.querySelectorAll("[data-view]");
+
+    function showView(viewName) {
+
+        document.querySelectorAll(".app-view").forEach(function (view) {
+            view.classList.remove("active");
+        });
+
+        const selectedView = document.getElementById(viewName + "View");
+
+        if (!selectedView) return;
+
+        selectedView.classList.add("active");
+
+        navButtons.forEach(function (button) {
+
+            button.classList.toggle(
+                "active",
+                button.dataset.view === viewName
+            );
+
+        });
+
+        if (viewName === "dashboard") updateDashboard();
+        if (viewName === "reports") displayMyReports();
+        if (viewName === "matches") displayMatches();
+        if (viewName === "alerts") displayAlerts();
+
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    navButtons.forEach(function (button) {
+
+        button.addEventListener("click", function () {
+            showView(button.dataset.view);
+        });
+
+    });
+
+
+    // ==========================================
+    // 5. LOGOUT
+    // ==========================================
+
+    document.getElementById("logoutBtn").addEventListener(
+        "click",
+        function () {
+
+            localStorage.removeItem("isLoggedIn");
+            localStorage.removeItem("loggedInUser");
+
+            window.location.href = "login.html";
+
+        }
+    );
+
+
+    // ==========================================
+    // 6. PHOTO UPLOAD AND CAMERA
+    // ==========================================
+
+    function compressImage(file) {
+
+        return new Promise(function (resolve, reject) {
+
+            if (!file || !file.type.startsWith("image/")) {
+                reject(new Error("Please select a valid image."));
+                return;
+            }
+
+            if (file.size > 8 * 1024 * 1024) {
+                reject(new Error("Please select an image smaller than 8 MB."));
+                return;
+            }
+
+            const reader = new FileReader();
+
+            reader.onload = function (event) {
+
+                const image = new Image();
+
+                image.onload = function () {
+
+                    const maxWidth = 900;
+                    const maxHeight = 900;
+
+                    let width = image.width;
+                    let height = image.height;
+
+                    const ratio = Math.min(
+                        1,
+                        maxWidth / width,
+                        maxHeight / height
+                    );
+
+                    width = Math.round(width * ratio);
+                    height = Math.round(height * ratio);
+
+                    const canvas = document.createElement("canvas");
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const context = canvas.getContext("2d");
+
+                    context.drawImage(image, 0, 0, width, height);
+
+                    resolve(canvas.toDataURL("image/jpeg", 0.72));
+
+                };
+
+                image.onerror = function () {
+                    reject(new Error("Unable to read this image."));
+                };
+
+                image.src = event.target.result;
+
+            };
+
+            reader.onerror = function () {
+                reject(new Error("Unable to upload image."));
+            };
+
+            reader.readAsDataURL(file);
+
+        });
+    }
+
+
+    // ==========================================
+    // 7. REPORT FORMS
+    // ==========================================
+
+    document.querySelectorAll(".report-form").forEach(function (form) {
+
+        const photoInput = form.querySelector('[name="photo"]');
+        const cameraInput = form.querySelector('[name="camera"]');
+        const preview = form.querySelector(".photo-preview");
+
+        const gpsButton = form.querySelector(".gps-button");
+        const gpsStatus = form.querySelector(".gps-status");
+
+        let selectedImage = null;
+        let gpsData = null;
+
+
+        // Photo upload
+
+        photoInput.addEventListener("change", function () {
+
+            cameraInput.value = "";
+
+            processSelectedPhoto(photoInput.files[0]);
+
+        });
+
+
+        // Camera capture
+
+        cameraInput.addEventListener("change", function () {
+
+            photoInput.value = "";
+
+            processSelectedPhoto(cameraInput.files[0]);
+
+        });
+
+
+        async function processSelectedPhoto(file) {
+
+            if (!file) return;
+
+            try {
+
+                selectedImage = await compressImage(file);
+
+                preview.innerHTML = `
+                    <img src="${selectedImage}" alt="Item Preview">
+                    <p>Photo selected successfully!</p>
+                `;
+
+            } catch (error) {
+
+                selectedImage = null;
+
+                preview.textContent = error.message;
+
+            }
+        }
+
+
+        // ==========================================
+        // 8. GPS LOCATION
+        // ==========================================
+
+        gpsButton.addEventListener("click", function () {
+
+            if (!navigator.geolocation) {
+
+                gpsStatus.textContent = "GPS is not supported.";
+
+                return;
+
+            }
+
+            gpsButton.disabled = true;
+
+            gpsStatus.textContent = "Detecting location...";
+
+            navigator.geolocation.getCurrentPosition(
+
+                function (position) {
+
+                    gpsData = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    };
+
+                    gpsStatus.textContent =
+                        "Location detected: " +
+                        gpsData.latitude.toFixed(5) + ", " +
+                        gpsData.longitude.toFixed(5);
+
+                    gpsButton.disabled = false;
+
+                },
+
+                function (error) {
+
+                    gpsStatus.textContent =
+                        error.code === 1
+                            ? "Please allow location permission."
+                            : "Unable to detect location. Try again.";
+
+                    gpsButton.disabled = false;
+
+                },
+
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000
+                }
+
+            );
+
+        });
+
+
+        // ==========================================
+        // 9. SUBMIT LOST / FOUND REPORT
+        // ==========================================
+
+        form.addEventListener("submit", async function (event) {
+
+            event.preventDefault();
+
+            const message = form.querySelector(".form-message");
+
+            const submitButton =
+                form.querySelector(".submit-report-btn");
+
+            const type = form.dataset.type;
+
+            message.style.color = "#dc2626";
+
+            if (!selectedImage) {
+
+                message.textContent =
+                    "Please upload or capture an item photo.";
+
+                return;
+
+            }
+
+            const formData = new FormData(form);
+
+            const report = {
+
+                type: type,
+
+                itemName: formData.get("itemName").trim(),
+
+                brand: formData.get("brand").trim(),
+
+                category: formData.get("category"),
+
+                color: formData.get("color"),
+
+                fromCity: formData.get("fromCity").trim(),
+
+                toCity: formData.get("toCity").trim(),
+
+                eventDate: formData.get("eventDate"),
+
+                eventTime: formData.get("eventTime"),
+
+                location: formData.get("location").trim(),
+
+                busNumber: formData.get("busNumber").trim(),
+
+                description: formData.get("description").trim(),
+
+                photo: selectedImage,
+
+                latitude: gpsData ? gpsData.latitude : null,
+
+                longitude: gpsData ? gpsData.longitude : null,
+
+                email: currentUser,
+
+                currentUser: currentUser,
+
+                status: "active"
+
+            };
+
+
+            submitButton.disabled = true;
+
+            submitButton.textContent = "Submitting...";
+
+
+            try {
+
+                // Save report in SQLite database
+
+                const response = await fetch(`${API_URL}/reports`, {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify(report)
+
+                });
+
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+
+                    throw new Error(
+                        data.message || "Unable to save report."
+                    );
+
+                }
+
+
+                // Fetch all users' reports again
+
+                await fetchReportsFromServer();
+
+
+                // Update existing matching system
+
+                updateMatchesAndAlerts();
+
+
+                // Reset form
+
+                form.reset();
+
+                selectedImage = null;
+
+                gpsData = null;
+
+                preview.innerHTML = "";
+
+                gpsStatus.textContent =
+                    "Location not detected yet.";
+
+
+                message.style.color = "#16803c";
+
+                message.textContent =
+                    type === "lost"
+                        ? "Lost report submitted successfully!"
+                        : "Found report submitted successfully!";
+
+
+                alert(
+                    type === "lost"
+                        ? "Your lost report has been submitted!"
+                        : "Your found report has been submitted!"
+                );
+
+
+                updateDashboard();
+
+                setTimeout(function () {
+                    showView("reports");
+                }, 500);
+
+
+            } catch (error) {
+
+                console.error("Report submission error:", error);
+
+                message.textContent =
+                    error.message ||
+                    "Unable to save report. Please try again.";
+
+            } finally {
+
+                submitButton.disabled = false;
+
+                submitButton.textContent =
+                    type === "lost"
+                        ? "Submit Lost Report"
+                        : "Submit Found Report";
+
+            }
+
+        });
+
+    });
+
+
+    // ==========================================
+    // 10. DASHBOARD STATISTICS
+    // ==========================================
+
+    function updateDashboard() {
+
+        const ownReports = reports.filter(function (report) {
+
+            return report.email === currentUser;
+
+        });
+
+
+        document.getElementById("lostCount").textContent =
+            ownReports.filter(function (r) {
+                return r.type === "lost" && r.status === "active";
+            }).length;
+
+
+        document.getElementById("foundCount").textContent =
+            ownReports.filter(function (r) {
+                return r.type === "found" && r.status === "active";
+            }).length;
+
+
+        document.getElementById("matchCount").textContent =
+            getMatches().filter(function (match) {
+
+                return match.lost.email === currentUser ||
+                    match.found.email === currentUser;
+
+            }).length;
+
+
+        document.getElementById("recoveredCount").textContent =
+            ownReports.filter(function (r) {
+                return r.status === "recovered";
+            }).length;
+
+
+        updateAlertBadge();
+
+    }
+
+
+    // ==========================================
+    // 11. MY REPORTS
+    // ==========================================
+
+    const myReportsContainer =
+        document.getElementById("myReportsContainer");
+
+    const reportFilter =
+        document.getElementById("reportFilter");
+
+
+    function displayMyReports() {
+
+        const filter = reportFilter.value;
+
+        let myReports = reports.filter(function (report) {
+
+            return report.email === currentUser;
+
+        });
+
+
+        if (filter === "lost" || filter === "found") {
+
+            myReports = myReports.filter(function (r) {
+                return r.type === filter;
+            });
+
+        } else if (filter === "recovered") {
+
+            myReports = myReports.filter(function (r) {
+                return r.status === "recovered";
+            });
+
+        }
+
+
+        if (myReports.length === 0) {
+
+            myReportsContainer.innerHTML = `
+                <div class="empty-state">
+                    <h2>No reports found</h2>
+                    <p>Your submitted reports will appear here.</p>
+                </div>
+            `;
+
+            return;
+
+        }
+
+
+        myReportsContainer.innerHTML = myReports
+            .slice()
+            .reverse()
+            .map(function (report) {
+
+                return `
+                    <div class="report-card">
+
+                        ${report.photo ? `
+                            <img src="${escapeHTML(report.photo)}"
+                                 alt="Item photo">
+                        ` : ""}
+
+                        <h3>${escapeHTML(report.itemName)}</h3>
+
+                        <p><b>Type:</b> ${escapeHTML(report.type)}</p>
+
+                        <p><b>Brand:</b> ${escapeHTML(report.brand)}</p>
+
+                        <p><b>Category:</b> ${escapeHTML(report.category)}</p>
+
+                        <p><b>Color:</b> ${escapeHTML(report.color)}</p>
+
+                        <p><b>Journey:</b>
+                            ${escapeHTML(report.fromCity)}
+                            to
+                            ${escapeHTML(report.toCity)}
+                        </p>
+
+                        <p><b>Location:</b>
+                            ${escapeHTML(report.location)}
+                        </p>
+
+                        <p><b>Date:</b>
+                            ${escapeHTML(report.lostDate || report.foundDate)}
+                        </p>
+
+                        <p><b>Status:</b>
+                            ${escapeHTML(report.status)}
+                        </p>
+
+                        <p><b>Description:</b>
+                            ${escapeHTML(report.description)}
+                        </p>
+
+                    </div>
+                `;
+
+            }).join("");
+
+    }
+
+
+    reportFilter.addEventListener("change", displayMyReports);
+
+
+    // ==========================================
+    // 12. RULE-BASED MATCHING SYSTEM
+    // ==========================================
+
+    function getMatchScore(lost, found) {
+
+        if (lost.type !== "lost" || found.type !== "found") {
+            return 0;
+        }
+
+        let score = 0;
+
+        const lostCategory = (lost.category || "").toLowerCase();
+        const foundCategory = (found.category || "").toLowerCase();
+
+        const lostColor = (lost.color || "").toLowerCase();
+        const foundColor = (found.color || "").toLowerCase();
+
+        const lostBrand = (lost.brand || "").toLowerCase();
+        const foundBrand = (found.brand || "").toLowerCase();
+
+        const lostName = (lost.itemName || "").toLowerCase();
+        const foundName = (found.itemName || "").toLowerCase();
+
+        const lostFrom = (lost.fromCity || "").toLowerCase();
+        const foundFrom = (found.fromCity || "").toLowerCase();
+
+        const lostTo = (lost.toCity || "").toLowerCase();
+        const foundTo = (found.toCity || "").toLowerCase();
+
+
+        // Category comparison
+
+        if (lostCategory && lostCategory === foundCategory) {
+            score += 25;
+        }
+
+
+        // Color comparison
+
+        if (lostColor && lostColor === foundColor) {
+            score += 15;
+        }
+
+
+        // Brand comparison
+
+        if (lostBrand && lostBrand === foundBrand) {
+            score += 15;
+        }
+
+
+        // Item name comparison
+
+        const lostWords = lostName.split(/\s+/);
+
+        const foundWords = foundName.split(/\s+/);
+
+        const commonWords = lostWords.filter(function (word) {
+
+            return word.length > 1 && foundWords.includes(word);
+
+        });
+
+        if (commonWords.length > 0) {
+
+            score += 20 * commonWords.length /
+                Math.max(lostWords.length, foundWords.length);
+
+        }
+
+
+        // Journey comparison
+
+        const sameFrom = lostFrom && lostFrom === foundFrom;
+
+        const sameTo = lostTo && lostTo === foundTo;
+
+        if (sameFrom && sameTo) {
+            score += 15;
+        } else if (sameFrom || sameTo) {
+            score += 8;
+        }
+
+
+        // Bus number comparison
+
+        if (
+            lost.busNumber &&
+            found.busNumber &&
+            lost.busNumber.toLowerCase() ===
+            found.busNumber.toLowerCase()
+        ) {
+            score += 5;
+        }
+
+
+        // Location comparison
+
+        if (
+            lost.location &&
+            found.location &&
+            lost.location.toLowerCase() ===
+            found.location.toLowerCase()
+        ) {
+            score += 5;
+        }
+
+
+        return Math.min(100, Math.round(score));
+
+    }
+
+
+    function getMatches() {
+
+        const results = [];
+
+        const lostReports = reports.filter(function (r) {
+
+            return r.type === "lost" && r.status === "active";
+
+        });
+
+        const foundReports = reports.filter(function (r) {
+
+            return r.type === "found" && r.status === "active";
+
+        });
+
+
+        lostReports.forEach(function (lost) {
+
+            foundReports.forEach(function (found) {
+
+                // Do not match a user's report with their own report
+
+                if (
+                    lost.email &&
+                    found.email &&
+                    lost.email === found.email
+                ) {
+                    return;
+                }
+
+
+                const score = getMatchScore(lost, found);
+
+                if (score >= 45) {
+
+                    results.push({
+                        lost: lost,
+                        found: found,
+                        score: score
+                    });
+
+                }
+
+            });
+
+        });
+
+
+        return results.sort(function (a, b) {
+            return b.score - a.score;
+        });
+
+    }
+
+
+    // ==========================================
+    // 13. CREATE LOCAL MATCH ALERTS
+    // ==========================================
+
+    function updateMatchesAndAlerts() {
+
+        const matches = getMatches();
+
+        matches.forEach(function (match) {
+
+            const involvedUsers = [
+                match.lost.email,
+                match.found.email
+            ];
+
+
+            involvedUsers.forEach(function (email) {
+
+                if (!email) return;
+
+
+                const alreadyExists = alerts.some(function (alert) {
+
+                    return alert.lostId === match.lost.id &&
+                        alert.foundId === match.found.id &&
+                        alert.email === email;
+
+                });
+
+
+                if (!alreadyExists) {
+
+                    alerts.push({
+
+                        id: "ALERT-" + Date.now() + "-" +
+                            Math.random().toString(36).slice(2, 7),
+
+                        lostId: match.lost.id,
+
+                        foundId: match.found.id,
+
+                        email: email,
+
+                        score: match.score,
+
+                        message:
+                            "A potential match was found for " +
+                            match.lost.itemName,
+
+                        read: false,
+
+                        createdAt: new Date().toISOString()
+
+                    });
+
+                }
+
+            });
+
+        });
+
+
+        saveData();
+
+        updateAlertBadge();
+
+    }
+
+
+    // ==========================================
+    // 14. DISPLAY MATCHES
+    // ==========================================
+
+    function displayMatches() {
+
+        const container =
+            document.getElementById("matchesContainer");
+
+
+        const matches = getMatches().filter(function (match) {
+
+            return match.lost.email === currentUser ||
+                match.found.email === currentUser;
+
+        });
+
+
+        if (matches.length === 0) {
+
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h2>No potential matches yet</h2>
+                    <p>Matching lost and found reports will appear here.</p>
+                </div>
+            `;
+
+            return;
+
+        }
+
+
+        container.innerHTML = matches.map(function (match) {
+
+            return `
+                <div class="report-card">
+
+                    <span class="match-label">
+                        Potential Match
+                    </span>
+
+                    <div class="match-score">
+                        ${match.score}% Rule-Based Match
+                    </div>
+
+
+                    <h3>Lost: ${escapeHTML(match.lost.itemName)}</h3>
+
+                    ${match.lost.photo ? `
+                        <img src="${escapeHTML(match.lost.photo)}"
+                             alt="Lost item">
+                    ` : ""}
+
+                    <p><b>Category:</b>
+                        ${escapeHTML(match.lost.category)}
+                    </p>
+
+                    <p><b>Color:</b>
+                        ${escapeHTML(match.lost.color)}
+                    </p>
+
+                    <p><b>Brand:</b>
+                        ${escapeHTML(match.lost.brand)}
+                    </p>
+
+
+                    <hr>
+
+
+                    <h3>Found: ${escapeHTML(match.found.itemName)}</h3>
+
+                    ${match.found.photo ? `
+                        <img src="${escapeHTML(match.found.photo)}"
+                             alt="Found item">
+                    ` : ""}
+
+                    <p><b>Category:</b>
+                        ${escapeHTML(match.found.category)}
+                    </p>
+
+                    <p><b>Color:</b>
+                        ${escapeHTML(match.found.color)}
+                    </p>
+
+                    <p><b>Brand:</b>
+                        ${escapeHTML(match.found.brand)}
+                    </p>
+
+                    <p><b>Found Location:</b>
+                        ${escapeHTML(match.found.location)}
+                    </p>
+
+                    <p><b>Contact:</b>
+                        ${escapeHTML(
+                            match.lost.email === currentUser
+                                ? match.found.email
+                                : match.lost.email
+                        )}
+                    </p>
+
+                </div>
+            `;
+
+        }).join("");
+
+    }
+
+
+    document.getElementById("refreshMatches").addEventListener(
+        "click",
+        async function () {
+
+            await fetchReportsFromServer();
+
+            updateMatchesAndAlerts();
+
+            displayMatches();
+
+        }
+    );
+
+
+    // ==========================================
+    // 15. ALERT NOTIFICATIONS
+    // ==========================================
+
+    function displayAlerts() {
+
+        const container =
+            document.getElementById("alertsContainer");
+
+
+        const myAlerts = alerts.filter(function (alert) {
+
+            return alert.email === currentUser;
+
+        });
+
+
+        if (myAlerts.length === 0) {
+
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h2>No notifications</h2>
+                    <p>New potential match alerts will appear here.</p>
+                </div>
+            `;
+
+            return;
+
+        }
+
+
+        container.innerHTML = myAlerts
+            .slice()
+            .reverse()
+            .map(function (alert) {
+
+                return `
+                    <div class="alert-card ${alert.read ? "" : "unread"}">
+
+                        <h3>Potential Match Found!</h3>
+
+                        <p>${escapeHTML(alert.message)}</p>
+
+                        <p><b>Match Score:</b>
+                            ${escapeHTML(alert.score)}%
+                        </p>
+
+                        <p>
+                            ${new Date(alert.createdAt).toLocaleString()}
+                        </p>
+
+                        ${!alert.read ? `
+                            <button class="gps-button"
+                                data-alert-id="${escapeHTML(alert.id)}">
+                                Mark as Read
+                            </button>
+                        ` : "<p>Read</p>"}
+
+                    </div>
+                `;
+
+            }).join("");
+
+    }
+
+
+    document.getElementById("alertsContainer").addEventListener(
+        "click",
+        function (event) {
+
+            const button =
+                event.target.closest("[data-alert-id]");
+
+            if (!button) return;
+
+
+            const selectedAlert = alerts.find(function (a) {
+
+                return a.id === button.dataset.alertId &&
+                    a.email === currentUser;
+
+            });
+
+
+            if (selectedAlert) {
+
+                selectedAlert.read = true;
+
+                saveData();
+
+                displayAlerts();
+
+                updateAlertBadge();
+
+            }
+
+        }
+    );
+
+
+    // Mark all alerts as read
+
+    document.getElementById("readAllAlerts").addEventListener(
+        "click",
+        function () {
+
+            alerts.forEach(function (alert) {
+
+                if (alert.email === currentUser) {
+                    alert.read = true;
+                }
+
+            });
+
+
+            saveData();
+
+            displayAlerts();
+
+            updateAlertBadge();
+
+        }
+    );
+
+
+    // ==========================================
+    // 16. ALERT BADGE
+    // ==========================================
+
+    function updateAlertBadge() {
+
+        const unreadCount = alerts.filter(function (alert) {
+
+            return alert.email === currentUser && !alert.read;
+
+        }).length;
+
+
+        document.getElementById("alertBadge").textContent =
+            unreadCount;
+
+    }
+
+
+    // ==========================================
+    // 17. INITIALIZE APPLICATION
+    // ==========================================
+
+    updateDashboard();
+
+    displayMyReports();
+
+    updateAlertBadge();
+
+    showView("dashboard");
+
+    // Load reports from shared database
+    fetchReportsFromServer().then(function () {
+
+        updateMatchesAndAlerts();
+
+        updateDashboard();
+
+        displayMatches();
+
+    });
+
+
+    console.log(
+        "ReFind AI application initialized successfully!"
+    );
+
+});

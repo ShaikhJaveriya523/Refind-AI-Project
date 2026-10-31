@@ -1,0 +1,166 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Login | ReFind AI - Smart Lost & Found</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- NAVBAR -->
+
+    <header class="navbar">
+
+        <div class="nav-container">
+
+            <div class="brand">
+                <span class="brand-name">ReFind AI</span>
+                <span class="brand-tagline">Smart Lost & Found</span>
+            </div>
+
+            <nav class="nav-links">
+
+                <a href="login.html" class="login-link">Login</a>
+
+                <a href="register.html" class="register-link">Register</a>
+
+            </nav>
+
+        </div>
+
+        <div class="nav-decoration">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+        </div>
+
+    </header>
+
+
+    <!-- LOGIN SECTION -->
+
+    <main class="main-content">
+
+        <div class="login-card">
+
+            <h1>Welcome back</h1>
+
+            <p class="description">
+                Log in to see your reports and matches.
+            </p>
+
+            <form id="loginForm" method="post">
+
+                <div class="form-group">
+
+                    <label for="email">Email</label>
+
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="Enter your email"
+                        required
+                    >
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label for="password">Password</label>
+
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="Enter your password"
+                        required
+                    >
+
+                </div>
+
+
+                <p id="errorMessage"></p>
+
+
+                <button type="submit" class="login-button">
+                    Login
+                </button>
+
+            </form>
+
+
+            <p class="signup-text">
+
+                New here?
+
+                <a href="register.html">
+                    Create an account
+                </a>
+
+            </p>
+
+        </div>
+
+    </main>
+
+
+    <!-- LOGIN JAVASCRIPT -->
+
+    <script>
+
+        const loginForm = document.getElementById("loginForm");
+
+        loginForm.addEventListener("submit", function(event) {
+
+            // Stop normal form submission
+            event.preventDefault();
+
+            const email = document.getElementById("email").value.trim();
+
+            const password = document.getElementById("password").value;
+
+            const errorMessage = document.getElementById("errorMessage");
+
+            errorMessage.textContent = "";
+            errorMessage.style.color = "red";
+
+
+            // Check empty fields
+
+            if (email === "" || password === "") {
+
+                errorMessage.textContent = "Please fill all fields.";
+
+                return;
+
+            }
+
+
+            // Save login session
+
+            localStorage.setItem("isLoggedIn", "true");
+
+            localStorage.setItem("loggedInUser", email);
+
+
+            // Open Dashboard
+
+            window.location.replace("dashboard.html");
+
+        });
+
+    </script>
+
+</body>
+
+</html>

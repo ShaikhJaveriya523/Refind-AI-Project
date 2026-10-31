@@ -1,0 +1,261 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Register | ReFind AI - Smart Lost & Found</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- NAVBAR -->
+
+    <header class="navbar">
+
+        <div class="nav-container">
+
+            <div class="brand">
+                <span class="brand-name">ReFind AI</span>
+                <span class="brand-tagline">Smart Lost & Found</span>
+            </div>
+
+            <nav class="nav-links">
+
+                <a href="login.html" class="login-link">
+                    Login
+                </a>
+
+                <a href="register.html" class="register-link">
+                    Register
+                </a>
+
+            </nav>
+
+        </div>
+
+        <div class="nav-decoration">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+        </div>
+
+    </header>
+
+
+    <!-- REGISTRATION SECTION -->
+
+    <main class="main-content">
+
+        <div class="register-card">
+
+            <h1>Create an account</h1>
+
+            <p class="description">
+                Join ReFind AI and help reconnect lost belongings.
+            </p>
+
+            <form id="registerForm">
+
+                <!-- FULL NAME -->
+
+                <div class="form-group">
+
+                    <label for="name">Full Name</label>
+
+                    <input
+                        type="text"
+                        id="name"
+                        placeholder="Enter your full name"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- EMAIL -->
+
+                <div class="form-group">
+
+                    <label for="email">Email</label>
+
+                    <input
+                        type="email"
+                        id="email"
+                        placeholder="Enter your email"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- MOBILE NUMBER -->
+
+                <div class="form-group">
+
+                    <label for="mobile">Mobile Number</label>
+
+                    <input
+                        type="tel"
+                        id="mobile"
+                        placeholder="Enter 10-digit mobile number"
+                        pattern="[0-9]{10}"
+                        maxlength="10"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- PASSWORD -->
+
+                <div class="form-group">
+
+                    <label for="password">Password</label>
+
+                    <input
+                        type="password"
+                        id="password"
+                        placeholder="Create your password"
+                        minlength="6"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- CONFIRM PASSWORD -->
+
+                <div class="form-group">
+
+                    <label for="confirmPassword">Confirm Password</label>
+
+                    <input
+                        type="password"
+                        id="confirmPassword"
+                        placeholder="Confirm your password"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- ERROR MESSAGE -->
+
+                <p id="errorMessage"></p>
+
+
+                <!-- CREATE ACCOUNT BUTTON -->
+
+                <button type="submit" class="register-button">
+                    Create Account
+                </button>
+
+            </form>
+
+
+            <!-- LOGIN PAGE CONNECTION -->
+
+            <p class="login-text">
+
+                Already have an account?
+
+                <a href="login.html">
+                    Login
+                </a>
+
+            </p>
+
+        </div>
+
+    </main>
+
+
+    <!-- JAVASCRIPT -->
+
+    <script>
+
+        const registerForm =
+            document.getElementById("registerForm");
+
+        registerForm.addEventListener("submit", function(e) {
+
+            e.preventDefault();
+
+            const name =
+                document.getElementById("name").value.trim();
+
+            const email =
+                document.getElementById("email").value.trim();
+
+            const mobile =
+                document.getElementById("mobile").value.trim();
+
+            const password =
+                document.getElementById("password").value;
+
+            const confirmPassword =
+                document.getElementById("confirmPassword").value;
+
+            const errorMessage =
+                document.getElementById("errorMessage");
+
+            errorMessage.style.color = "#dc2626";
+
+            errorMessage.textContent = "";
+
+
+            // CHECK MOBILE NUMBER
+
+            if (!/^[0-9]{10}$/.test(mobile)) {
+
+                errorMessage.textContent =
+                    "Please enter a valid 10-digit mobile number.";
+
+                return;
+            }
+
+
+            // CHECK PASSWORD LENGTH
+
+            if (password.length < 6) {
+
+                errorMessage.textContent =
+                    "Password must contain at least 6 characters.";
+
+                return;
+            }
+
+
+            // CHECK PASSWORD MATCH
+
+            if (password !== confirmPassword) {
+
+                errorMessage.textContent =
+                    "Passwords do not match!";
+
+                return;
+            }
+
+
+            // REGISTRATION VALIDATION SUCCESS
+
+            alert("Registration form validated successfully! Please login.");
+
+            // REDIRECT TO LOGIN PAGE
+
+            window.location.href = "login.html";
+
+        });
+
+    </script>
+
+</body>
+
+</html>
