@@ -254,44 +254,41 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
 
+    
     // ==========================================
-    // 7. REPORT FORMS
+    // 7. REPORT FORMS - UPDATED CAMERA & GPS
     // ==========================================
 
     document.querySelectorAll(".report-form").forEach(function (form) {
 
         const photoInput = form.querySelector('[name="photo"]');
-        const cameraInput = form.querySelector('[name="camera"]');
         const preview = form.querySelector(".photo-preview");
+
+        const cameraButton = form.querySelector(".camera-btn");
 
         const gpsButton = form.querySelector(".gps-button");
         const gpsStatus = form.querySelector(".gps-status");
+
+        const locationInput = form.querySelector('[name="location"]');
 
         let selectedImage = null;
         let gpsData = null;
 
 
-        // Photo upload
+        // ==========================================
+        // PHOTO UPLOAD
+        // ==========================================
 
         photoInput.addEventListener("change", function () {
-
-            cameraInput.value = "";
 
             processSelectedPhoto(photoInput.files[0]);
 
         });
 
 
-        // Camera capture
-
-        cameraInput.addEventListener("change", function () {
-
-            photoInput.value = "";
-
-            processSelectedPhoto(cameraInput.files[0]);
-
-        });
-
+        // ==========================================
+        // PROCESS AND COMPRESS PHOTO
+        // ==========================================
 
         async function processSelectedPhoto(file) {
 
@@ -317,55 +314,352 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
         // ==========================================
-        // 8. GPS LOCATION
+        // 8. LIVE CAMERA FUNCTIONALITY
+        // ==========================================
+
+        cameraButton.addEventListener("click", async function (event) {
+
+            event.preventDefault();
+
+            if (!navigator.mediaDevices ||
+                !navigator.mediaDevices.getUserMedia) {
+
+                alert("Camera is not supported. Please open using Live Server.");
+
+                return;
+            }
+
+            let stream = null;
+            let modal = null;
+
+            try {
+
+                stream = await navigator.mediaDevices.getUserMedia({
+
+                    video: {
+                        facingMode: "user"
+                    },
+
+                    audio: false
+
+                });
+
+
+                // Create camera popup
+
+                modal = document.createElement("div");
+
+                modal.style.cssText = `
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(0,0,0,0.85);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 99999;
+                    padding: 20px;
+                `;
+
+
+                modal.innerHTML = `
+
+                    <div style="
+                        background: white;
+                        padding: 20px;
+                        border-radius: 15px;
+                        width: 100%;
+                        max-width: 500px;
+                        text-align: center;
+                    ">
+
+                        <h2>Capture Item Photo</h2>
+
+                        <video
+                            id="refindCameraVideo"
+                            autoplay
+                            playsinline
+                            style="
+                                width: 100%;
+                                border-radius: 10px;
+                                background: black;
+                            ">
+                        </video>
+
+                        <br><br>
+
+                        <button
+                            type="button"
+                            id="captureRefindPhoto">
+                            📸 Capture Photo
+                        </button>
+
+                        <button
+                            type="button"
+                            id="closeRefindCamera">
+                            ✖ Close Camera
+                        </button>
+
+                    </div>
+
+                `;
+
+
+                document.body.appendChild(modal);
+
+
+                const video = modal.querySelector(
+                    "#refindCameraVideo"
+                );
+
+                video.srcObject = stream;
+
+                await video.play();
+
+
+                // Stop camera
+
+                function closeCamera() {
+
+                    if (stream) {
+
+                        stream.getTracks().forEach(function (track) {
+
+                            track.stop();
+
+                        });
+
+                    }
+
+                    if (modal && modal.parentNode) {
+
+                        modal.remove();
+
+                    }
+
+                }
+
+
+                // Close button
+
+                modal.querySelector("#closeRefindCamera")
+                    .addEventListener("click", closeCamera);
+
+
+                // Capture button
+
+                modal.querySelector("#captureRefindPhoto")
+                    .addEventListener("click", function () {
+
+                        if (!video.videoWidth || !video.videoHeight) {
+
+                            alert("Camera is not ready. Try again.");
+
+                            return;
+
+                        }
+
+
+                        const canvas = document.createElement("canvas");
+
+                        canvas.width = video.videoWidth;
+
+                        canvas.height = video.videoHeight;
+
+
+                        const context = canvas.getContext("2d");
+
+                        context.drawImage(
+                            video,
+                            0,
+                            0,
+                            canvas.width,
+                            canvas.height
+                        );
+
+
+                        canvas.toBlob(async function (blob) {
+
+                            if (!blob) {
+
+                                alert("Unable to capture photo.");
+
+                                return;
+
+                            }
+
+
+                            const capturedFile = new File(
+
+                                [blob],
+
+                                "refind-camera-photo.jpg",
+
+                                { type: "image/jpeg" }
+
+                            );
+
+
+                            photoInput.value = "";
+
+                            await processSelectedPhoto(capturedFile);
+
+                            closeCamera();
+
+
+                        }, "image/jpeg", 0.85);
+
+                    });
+
+
+            } catch (error) {
+
+                console.error("Camera Error:", error);
+
+
+                let errorMessage = "Unable to open camera.";
+
+                if (error.name === "NotAllowedError") {
+
+                    errorMessage =
+                        "Camera permission denied. Please allow camera access.";
+
+                } else if (error.name === "NotFoundError") {
+
+                    errorMessage =
+                        "No camera found on your device.";
+
+                } else if (error.name === "NotReadableError") {
+
+                    errorMessage =
+                        "Camera is already being used by another application.";
+
+                }
+
+
+                alert(errorMessage);
+
+
+                if (stream) {
+
+                    stream.getTracks().forEach(function (track) {
+
+                        track.stop();
+
+                    });
+
+                }
+
+                if (modal) modal.remove();
+
+            }
+
+        });
+
+
+        // ==========================================
+        // 9. GPS LOCATION DETECTION
         // ==========================================
 
         gpsButton.addEventListener("click", function () {
 
             if (!navigator.geolocation) {
 
-                gpsStatus.textContent = "GPS is not supported.";
+                gpsStatus.textContent =
+                    "GPS is not supported by this browser.";
 
                 return;
 
             }
 
+
             gpsButton.disabled = true;
 
-            gpsStatus.textContent = "Detecting location...";
+            gpsStatus.textContent =
+                "Detecting your current location...";
+
+            gpsStatus.style.color = "#2563eb";
+
 
             navigator.geolocation.getCurrentPosition(
 
                 function (position) {
 
                     gpsData = {
+
                         latitude: position.coords.latitude,
+
                         longitude: position.coords.longitude
+
                     };
 
+
+                    // Automatically fill location input
+
+                    locationInput.value =
+
+                        "Latitude: " +
+                        gpsData.latitude.toFixed(6) +
+
+                        ", Longitude: " +
+                        gpsData.longitude.toFixed(6);
+
+
                     gpsStatus.textContent =
-                        "Location detected: " +
-                        gpsData.latitude.toFixed(5) + ", " +
-                        gpsData.longitude.toFixed(5);
+
+                        "✓ Location detected successfully!";
+
+
+                    gpsStatus.style.color = "green";
 
                     gpsButton.disabled = false;
 
+
+                    console.log("GPS Location:", gpsData);
+
                 },
+
 
                 function (error) {
 
-                    gpsStatus.textContent =
-                        error.code === 1
-                            ? "Please allow location permission."
-                            : "Unable to detect location. Try again.";
+                    gpsData = null;
+
+                    let errorMessage = "Unable to detect location.";
+
+                    if (error.code === 1) {
+
+                        errorMessage =
+                            "Location permission denied. Please allow location access.";
+
+                    } else if (error.code === 2) {
+
+                        errorMessage =
+                            "Location unavailable. Check your device location settings.";
+
+                    } else if (error.code === 3) {
+
+                        errorMessage =
+                            "Location request timed out. Please try again.";
+
+                    }
+
+
+                    gpsStatus.textContent = errorMessage;
+
+                    gpsStatus.style.color = "red";
 
                     gpsButton.disabled = false;
 
                 },
 
+
                 {
+
                     enableHighAccuracy: true,
-                    timeout: 10000
+
+                    timeout: 20000,
+
+                    maximumAge: 0
+
                 }
 
             );
@@ -374,12 +668,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
         // ==========================================
-        // 9. SUBMIT LOST / FOUND REPORT
+        // 10. SUBMIT LOST / FOUND REPORT
         // ==========================================
 
         form.addEventListener("submit", async function (event) {
 
             event.preventDefault();
+
 
             const message = form.querySelector(".form-message");
 
@@ -388,7 +683,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const type = form.dataset.type;
 
+
             message.style.color = "#dc2626";
+
 
             if (!selectedImage) {
 
@@ -399,7 +696,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
             }
 
+
+            if (!locationInput.value.trim()) {
+
+                message.textContent =
+                    "Please enter the item location.";
+
+                locationInput.focus();
+
+                return;
+
+            }
+
+
             const formData = new FormData(form);
+
 
             const report = {
 
@@ -449,14 +760,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
             try {
 
-                // Save report in SQLite database
-
                 const response = await fetch(`${API_URL}/reports`, {
 
                     method: "POST",
 
                     headers: {
+
                         "Content-Type": "application/json"
+
                     },
 
                     body: JSON.stringify(report)
@@ -466,21 +777,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 const data = await response.json();
 
+
                 if (!response.ok || !data.success) {
 
                     throw new Error(
+
                         data.message || "Unable to save report."
+
                     );
 
                 }
 
 
-                // Fetch all users' reports again
-
                 await fetchReportsFromServer();
-
-
-                // Update existing matching system
 
                 updateMatchesAndAlerts();
 
@@ -495,29 +804,42 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 preview.innerHTML = "";
 
+
                 gpsStatus.textContent =
                     "Location not detected yet.";
+
+                gpsStatus.style.color = "";
 
 
                 message.style.color = "#16803c";
 
                 message.textContent =
+
                     type === "lost"
+
                         ? "Lost report submitted successfully!"
+
                         : "Found report submitted successfully!";
 
 
                 alert(
+
                     type === "lost"
+
                         ? "Your lost report has been submitted!"
+
                         : "Your found report has been submitted!"
+
                 );
 
 
                 updateDashboard();
 
+
                 setTimeout(function () {
+
                     showView("reports");
+
                 }, 500);
 
 
@@ -526,7 +848,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 console.error("Report submission error:", error);
 
                 message.textContent =
+
                     error.message ||
+
                     "Unable to save report. Please try again.";
 
             } finally {
@@ -534,8 +858,11 @@ document.addEventListener("DOMContentLoaded", function () {
                 submitButton.disabled = false;
 
                 submitButton.textContent =
+
                     type === "lost"
+
                         ? "Submit Lost Report"
+
                         : "Submit Found Report";
 
             }
